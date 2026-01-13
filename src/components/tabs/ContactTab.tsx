@@ -7,23 +7,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useProfile } from "@/hooks/usePortfolioData";
+import { supabase } from "@/integrations/supabase/client";
 
 import profileAvatar from "@/assets/profile-avatar.jpg";
 
 type TabType = "information" | "form";
 
-const contactMethods = [
-  { icon: Phone, label: "Call", action: "tel:+1234567890" },
-  { icon: Mail, label: "Email", action: "mailto:john@example.com" },
-  { icon: Info, label: "Info", action: "#" },
-  { icon: AtSign, label: "Social", action: "#" },
-];
-
 export function ContactTab() {
   const [activeTab, setActiveTab] = useState<TabType>("information");
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
+  const [submitting, setSubmitting] = useState(false);
+  
+  const { data: profile } = useProfile();
 
-  const handleSubmit = () => {
+  const contactMethods = [
+    { icon: Phone, label: "Call", action: `tel:${profile?.phone || "+1234567890"}` },
+    { icon: Mail, label: "Email", action: `mailto:${profile?.email || "john@example.com"}` },
+    { icon: Info, label: "Info", action: "#" },
+    { icon: AtSign, label: "Social", action: "#" },
+  ];
+
+  const handleSubmit = async () => {
     if (!formData.name || !formData.email || !formData.message) {
       toast.error("Please fill all fields");
       return;
@@ -32,8 +37,19 @@ export function ContactTab() {
       toast.error("Please enter a valid email");
       return;
     }
-    toast.success("Message sent successfully!");
-    setFormData({ name: "", email: "", message: "" });
+    
+    setSubmitting(true);
+    const { error } = await supabase
+      .from("contact_submissions")
+      .insert(formData);
+    
+    if (error) {
+      toast.error("Failed to send message");
+    } else {
+      toast.success("Message sent successfully!");
+      setFormData({ name: "", email: "", message: "" });
+    }
+    setSubmitting(false);
   };
 
   return (
@@ -71,12 +87,16 @@ export function ContactTab() {
           {/* Profile */}
           <section className="text-center">
             <div className="flex justify-center mb-4">
-              <ProfileAvatar src={profileAvatar} alt="John Doe" size="xl" />
+              <ProfileAvatar 
+                src={profile?.avatar_url || profileAvatar} 
+                alt={profile?.name || "Profile"} 
+                size="xl" 
+              />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">John Doe</h1>
+            <h1 className="text-2xl font-bold text-foreground">{profile?.name || "John Doe"}</h1>
             <p className="text-muted-foreground mt-2">
-              115 Arbor Ln Marlton<br />
-              New Jersey(NJ), 08053
+              {profile?.address || "115 Arbor Ln Marlton"}<br />
+              {profile?.city || "New Jersey(NJ), 08053"}
             </p>
           </section>
 
@@ -142,10 +162,11 @@ export function ContactTab() {
 
           <Button 
             onClick={handleSubmit} 
+            disabled={submitting}
             className="w-full rounded-full py-6 text-base"
           >
             <Mail className="w-5 h-5 mr-2" />
-            Send message!
+            {submitting ? "Sending..." : "Send message!"}
           </Button>
         </div>
       )}
