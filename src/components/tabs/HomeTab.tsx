@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Instagram, Linkedin, Globe } from "lucide-react";
+import { Instagram, Linkedin, Globe, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { ProfileAvatar } from "@/components/ui/ProfileAvatar";
 import { SocialButton } from "@/components/ui/SocialButton";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -8,51 +9,83 @@ import { SkillBar } from "@/components/ui/SkillBar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useProfile, useSocialLinks, useProjects, useSkills } from "@/hooks/usePortfolioData";
+import { supabase } from "@/integrations/supabase/client";
 
 import profileAvatar from "@/assets/profile-avatar.jpg";
-import projectWatch from "@/assets/project-watch.jpg";
-import projectFanta from "@/assets/project-fanta.jpg";
-import projectCar from "@/assets/project-car.jpg";
-import projectShoes from "@/assets/project-shoes.jpg";
 
 interface HomeTabProps {
   onViewProject: (projectId: string) => void;
 }
 
-const projects = [
-  { id: "1", image: projectWatch, title: "Cartier - Graphic Design", category: "Product Design", date: "Jan 12, 2024" },
-  { id: "2", image: projectFanta, title: "Fanta - Video Production", category: "Advertising", date: "Dec 27, 2023" },
-  { id: "3", image: projectCar, title: "BMW - Brand Campaign", category: "Automotive", date: "Nov 15, 2023" },
-  { id: "4", image: projectShoes, title: "Nike - Product Shot", category: "Fashion", date: "Oct 8, 2023" },
-];
-
-const skills = [
-  { icon: "https://upload.wikimedia.org/wikipedia/commons/a/af/Adobe_Photoshop_CC_icon.svg", name: "Adobe Photoshop", percentage: 92, color: "bg-[#31A8FF]" },
-  { icon: "https://upload.wikimedia.org/wikipedia/commons/f/fb/Adobe_Illustrator_CC_icon.svg", name: "Adobe Illustrator", percentage: 88, color: "bg-[#FF9A00]" },
-  { icon: "https://upload.wikimedia.org/wikipedia/commons/4/40/Adobe_Premiere_Pro_CC_icon.svg", name: "Adobe Premiere", percentage: 85, color: "bg-[#9999FF]" },
-  { icon: "https://upload.wikimedia.org/wikipedia/commons/c/cb/Adobe_After_Effects_CC_icon.svg", name: "After Effects", percentage: 78, color: "bg-[#9999FF]" },
-];
+const getIcon = (iconName: string) => {
+  switch (iconName.toLowerCase()) {
+    case "instagram": return Instagram;
+    case "linkedin": return Linkedin;
+    default: return Globe;
+  }
+};
 
 export function HomeTab({ onViewProject }: HomeTabProps) {
   const [email, setEmail] = useState("");
+  const [subscribing, setSubscribing] = useState(false);
+  const navigate = useNavigate();
+  
+  const { data: profile } = useProfile();
+  const { data: socials } = useSocialLinks();
+  const { data: projects } = useProjects();
+  const { data: skills } = useSkills();
 
-  const handleSubscribe = () => {
+  const handleSubscribe = async () => {
     if (!email.includes("@")) {
       toast.error("Please enter a valid email");
       return;
     }
-    toast.success("Subscribed successfully!");
-    setEmail("");
+    
+    setSubscribing(true);
+    const { error } = await supabase
+      .from("newsletter_subscribers")
+      .insert({ email });
+    
+    if (error) {
+      if (error.code === "23505") {
+        toast.error("You're already subscribed!");
+      } else {
+        toast.error("Failed to subscribe");
+      }
+    } else {
+      toast.success("Subscribed successfully!");
+      setEmail("");
+    }
+    setSubscribing(false);
   };
 
   return (
     <div className="animate-fade-in space-y-8">
+      {/* Admin Link */}
+      <div className="flex justify-end">
+        <button 
+          onClick={() => navigate("/auth")}
+          className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </div>
+      
       {/* Profile Hero */}
       <section className="flex items-center gap-5">
-        <ProfileAvatar src={profileAvatar} alt="John Doe" size="lg" />
+        <ProfileAvatar 
+          src={profile?.avatar_url || profileAvatar} 
+          alt={profile?.name || "Profile"} 
+          size="lg" 
+        />
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Hello, I'm John Doe</h1>
-          <p className="text-muted-foreground mt-1">Graphist and Video<br />Producer Freelance</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            Hello, I'm {profile?.name || "John Doe"}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {profile?.title || "Graphist and Video Producer Freelance"}
+          </p>
         </div>
       </section>
 
@@ -60,9 +93,14 @@ export function HomeTab({ onViewProject }: HomeTabProps) {
       <section>
         <SectionTitle className="mb-4">Learn more about me</SectionTitle>
         <div className="flex justify-around">
-          <SocialButton icon={Instagram} label="Instagram" href="#" />
-          <SocialButton icon={Linkedin} label="LinkedIn" href="#" />
-          <SocialButton icon={Globe} label="Behance" href="#" />
+          {socials?.map((social) => (
+            <SocialButton 
+              key={social.id}
+              icon={getIcon(social.icon)} 
+              label={social.platform} 
+              href={social.url} 
+            />
+          ))}
         </div>
       </section>
 
@@ -77,35 +115,48 @@ export function HomeTab({ onViewProject }: HomeTabProps) {
             onChange={(e) => setEmail(e.target.value)}
             className="flex-1 bg-secondary border-0"
           />
-          <Button onClick={handleSubscribe} className="px-6">
-            Subscribe
+          <Button onClick={handleSubscribe} disabled={subscribing} className="px-6">
+            {subscribing ? "..." : "Subscribe"}
           </Button>
         </div>
       </section>
 
       {/* Projects */}
-      <section>
-        <SectionTitle className="mb-4">Discover my last projects</SectionTitle>
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
-          {projects.map((project) => (
-            <ProjectCard 
-              key={project.id}
-              {...project}
-              onClick={() => onViewProject(project.id)}
-            />
-          ))}
-        </div>
-      </section>
+      {projects && projects.length > 0 && (
+        <section>
+          <SectionTitle className="mb-4">Discover my last projects</SectionTitle>
+          <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
+            {projects.map((project) => (
+              <ProjectCard 
+                key={project.id}
+                image={project.image_url || "https://via.placeholder.com/200"}
+                title={project.title}
+                category={project.category}
+                date={project.project_date ? new Date(project.project_date).toLocaleDateString() : ""}
+                onClick={() => onViewProject(project.id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Skills */}
-      <section>
-        <SectionTitle className="mb-4">My skills</SectionTitle>
-        <div className="space-y-3">
-          {skills.map((skill) => (
-            <SkillBar key={skill.name} {...skill} />
-          ))}
-        </div>
-      </section>
+      {skills && skills.length > 0 && (
+        <section>
+          <SectionTitle className="mb-4">My skills</SectionTitle>
+          <div className="space-y-3">
+            {skills.map((skill) => (
+              <SkillBar 
+                key={skill.id} 
+                icon={skill.icon_url || ""}
+                name={skill.name}
+                percentage={skill.percentage}
+                color={`bg-[${skill.color}]`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
